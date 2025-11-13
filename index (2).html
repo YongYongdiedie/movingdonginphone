@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>기울기 강아지 게임</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f4f4;
+      color: #222;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    #game-area {
+      position: relative;
+      width: 90vw;
+      max-width: 500px;
+      aspect-ratio: 1 / 1;
+      background: #ffffff;
+      border-radius: 24px;
+      border: 2px solid #ddd;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.08);
+      overflow: hidden;
+    }
+    #dog {
+      position: absolute;
+      width: 60px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      transition: transform 0.05s linear;
+      will-change: transform;
+      pointer-events: none;
+    }
+    #ui {
+      margin-top: 16px;
+      text-align: center;
+      padding: 0 16px;
+    }
+    #title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    #desc {
+      font-size: 0.9rem;
+      margin-bottom: 12px;
+      color: #555;
+    }
+    #start-btn {
+      padding: 10px 20px;
+      border-radius: 999px;
+      border: none;
+      font-size: 0.95rem;
+      font-weight: 600;
+      background: #4f46e5;
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 6px 12px rgba(79, 70, 229, 0.35);
+    }
+    #start-btn:active {
+      transform: translateY(1px);
+      box-shadow: 0 3px 8px rgba(79, 70, 229, 0.4);
+    }
+    #status {
+      font-size: 0.8rem;
+      margin-top: 8px;
+      color: #666;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-area">
+    <div id="dog">🐶</div>
+  </div>
+
+  <div id="ui">
+    <div id="title">휴대폰을 기울여 강아지를 움직여 보세요!</div>
+    <div id="desc">버튼을 누른 뒤 휴대폰을 좌우, 앞뒤로 기울이면 강아지가 그 방향으로 이동합니다.</div>
+    <button id="start-btn">센서 사용 시작하기</button>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const dog = document.getElementById("dog");
+    const gameArea = document.getElementById("game-area");
+    const startBtn = document.getElementById("start-btn");
+    const statusEl = document.getElementById("status");
+
+    let areaRect = null;
+    let dogHalf = 30; // 60px / 2
+    let centerX = 0;
+    let centerY = 0;
+    let maxOffsetX = 0;
+    let maxOffsetY = 0;
+    let listening = false;
+
+    function updateBounds() {
+      areaRect = gameArea.getBoundingClientRect();
+      centerX = areaRect.width / 2;
+      centerY = areaRect.height / 2;
+      maxOffsetX = centerX - dogHalf - 5;
+      maxOffsetY = centerY - dogHalf - 5;
+      // 센터에 배치
+      moveDog(centerX, centerY);
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function moveDog(x, y) {
+      const clampedX = clamp(x, dogHalf, areaRect.width - dogHalf);
+      const clampedY = clamp(y, dogHalf, areaRect.height - dogHalf);
+      dog.style.transform = "translate(" + (clampedX - dogHalf) + "px, " + (clampedY - dogHalf) + "px)";
+    }
+
+    function handleOrientation(event) {
+      if (!areaRect) return;
+
+      const beta = event.beta || 0;  // 앞뒤 기울기: -180 ~ 180
+      const gamma = event.gamma || 0; // 좌우 기울기: -90 ~ 90
+
+      const normGamma = Math.max(-45, Math.min(45, gamma));
+      const normBeta = Math.max(-45, Math.min(45, beta));
+
+      const offsetX = (normGamma / 45) * maxOffsetX;
+      const offsetY = (normBeta / 45) * maxOffsetY;
+
+      const targetX = centerX + offsetX;
+      const targetY = centerY + offsetY;
+
+      moveDog(targetX, targetY);
+    }
+
+    async function startOrientation() {
+      if (listening) return;
+      statusEl.textContent = "센서 권한을 요청하는 중입니다...";
+
+      try {
+        if (typeof DeviceOrientationEvent !== "undefined" &&
+            typeof DeviceOrientationEvent.requestPermission === "function") {
+          const response = await DeviceOrientationEvent.requestPermission();
+          if (response !== "granted") {
+            statusEl.textContent = "센서 사용이 거부되었습니다. 설정에서 '모션 및 방향 접근'을 허용해주세요.";
+            return;
+          }
+        }
+
+        window.addEventListener("deviceorientation", handleOrientation);
+        listening = true;
+        statusEl.textContent = "센서 사용 중입니다. 이제 휴대폰을 기울여 보세요!";
+        startBtn.textContent = "다시 시작하기";
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = "이 브라우저에서는 센서를 사용할 수 없거나, 권한 요청 중 오류가 발생했습니다.";
+      }
+    }
+
+    startBtn.addEventListener("click", startOrientation);
+    window.addEventListener("load", updateBounds);
+    window.addEventListener("resize", updateBounds);
+  </script>
+</body>
+</html>
